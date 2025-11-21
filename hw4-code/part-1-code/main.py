@@ -37,17 +37,26 @@ def do_train(args, model, train_dataloader, save_dir="./out"):
     model.train()
     progress_bar = tqdm(range(num_training_steps))
 
-    ################################
-    ##### YOUR CODE BEGINGS HERE ###
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model.to(device)
 
-    # Implement the training loop --- make sure to use the optimizer and lr_sceduler (learning rate scheduler)
-    # Remember that pytorch uses gradient accumumlation so you need to use zero_grad (https://pytorch.org/tutorials/recipes/recipes/zeroing_out_gradients.html)
-    # You can use progress_bar.update(1) to see the progress during training
-    # You can refer to the pytorch tutorial covered in class for reference
+    for epoch in range(num_epochs):
+        for batch in train_dataloader:
 
-    raise NotImplementedError
+            batch = {k: v.to(device) for k, v in batch.items()}
 
-    ##### YOUR CODE ENDS HERE ######
+            optimizer.zero_grad()
+
+            outputs = model(**batch)
+            loss = outputs.loss
+
+            loss.backward()
+
+            optimizer.step()
+
+            lr_scheduler.step()
+
+            progress_bar.update(1)
 
     print("Training completed...")
     print("Saving Model....")
@@ -89,11 +98,32 @@ def create_augmented_dataloader(args, dataset):
     ################################
     ##### YOUR CODE BEGINGS HERE ###
 
-    # Here, 'dataset' is the original dataset. You should return a dataloader called 'train_dataloader' -- this
-    # dataloader will be for the original training split augmented with 5k random transformed examples from the training set.
-    # You may find it helpful to see how the dataloader was created at other place in this code.
+    train_dataset = dataset["train"]
 
-    raise NotImplementedError
+    augmented_subset = train_dataset.shuffle(seed=42).select(range(5000))
+    augmented_subset = augmented_subset.map(
+        custom_transform,
+        load_from_cache_file=False
+    )
+
+    combined_dataset = datasets.Dataset.from_dict({
+        "text": list(train_dataset["text"]) + list(augmented_subset["text"]),
+        "label": list(train_dataset["label"]) + list(augmented_subset["label"]),
+    })
+
+    tokenized_dataset = combined_dataset.map(
+        tokenize_function, batched=True, load_from_cache_file=False
+    )
+    tokenized_dataset = tokenized_dataset.remove_columns(["text"])
+    tokenized_dataset = tokenized_dataset.rename_column("label", "labels")
+    tokenized_dataset.set_format("torch")
+
+    train_dataloader = DataLoader(
+        tokenized_dataset,
+        shuffle=True,
+        batch_size=args.batch_size
+    )
+
 
     ##### YOUR CODE ENDS HERE ######
 
